@@ -1,0 +1,19 @@
+Correlation constant:  [[ 1.          0.44723152]
+ [ 0.44723152  1.        ]]
+Baseline  0.697674418605
+38.0
+43.0
+Current Accuracy (Positive Predictive Value)  0.883720930233
+('Actual Accuracy: ', 0.7674418604651163)
+     |     G |
+     |  B  o |
+     |  a  o |
+     |  d  d |
+-----+-------+
+ Bad | <4> 9 |
+Good |  1<29>|
+-----+-------+
+(row = reference; col = test)
+
+
+Process finished with exit code 0
