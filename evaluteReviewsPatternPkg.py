@@ -1,5 +1,7 @@
 #import filterData
 import json
+import csv
+import codecs
 import nltk
 import nltk.corpus
 import pattern.en as Pattern
@@ -17,12 +19,11 @@ def decode_json(line):
 class Eval:
     correlation_vector1 = []
     correlation_vector2 = []
+
     #Inlcude POS tags as given in two papers
 
-    #{<JJ> <NN>|<JJ> <NNS>||<RB> <JJ>|<RB> <VBG>|<RB> <VBN>|<RB> <VBG>|<RBR> <JJ>|<VBG><NN>|<VBG><NNS>|<VB><NN>|<VB><NNS>|<VBD><NN>|<VBD><NNS>}
-    #{<JJ> <NN>|<JJ> <NNS>||<RB> <JJ>|<RB> <VBG>|<RB> <VBN>|<RB> <VBG>|<RBR> <JJ>|<VBG><NN>|<VBG><NNS>|<VB><NN>|<VB><NNS>|<VBD><NN>|<VBD><NNS>}
-    positiveChunkPOS_tag = "positive: {<JJ> <NN>|<JJ> <NNS>|<RB> <JJ>|<RB> <VBG>|<RB> <VBN>|<RB> <VBG>|<RBR> <JJ>}"
-    negativeChunkPOS_tag = "negative: {<JJ> <NN>|<JJ> <NNS>|<RB> <JJ>|<RB> <VBG>|<RB> <VBN>|<RB> <VBG>|<RBR> <JJ>}"
+    positiveChunkPOS_tag = "positive: {<JJ> <NN>|<JJ> <NNS>|<RB> <JJ>|<RBR> <JJ>}"#|<RB> <JJ>|<RB> <VBG>|<RB> <VBN>|<RB> <VBG>|<RBR> <JJ>}"
+    negativeChunkPOS_tag = "negative: {<JJ> <NN>|<JJ> <NNS>|<RB> <JJ>|<RBR> <JJ>}"#<RB> <JJ>|<RB> <VBG>|<RB> <VBN>|<RB> <VBG>|<RBR> <JJ>}"
 
     def initializeCorrelationVectors(self):
         self.correlation_vector1 = []
@@ -33,8 +34,8 @@ class Eval:
     def getChunks(self,review_text, star, positive_regex, negative_regex, review_id, dictionary_accuracy):
         #try:
         count_pos = 0;count_neg = 0;total_count = 0
-        positive_score = 0.0
-        negative_score = 0.0
+
+        review_phrases = []
         detectedPositive = False;
         detectedNegative = False;
         positiveParser = nltk.RegexpParser(positive_regex)
@@ -54,10 +55,11 @@ class Eval:
                 for i in range(0,len(terms)):
                     noun_phrase = noun_phrase +" " + terms[i]
                 polarity_score = Pattern.sentiment(noun_phrase.strip())
-                if polarity_score[0] >=(0.1):
+                if polarity_score[0] >=(0.2) and polarity_score[1]>=0.5:
                     positive_score += Pattern.sentiment(noun_phrase)[0]
                     total_count += 1
-                    #print "Positives:", noun_phrase, ": " ,positive_score
+                    print "Positives:", noun_phrase, ": " ,positive_score
+
                     detectedPositive = True
         chunk_reviews = negativeParser.parse(POStagged_reviews)
         subtrees = chunk_reviews.subtrees()
@@ -70,16 +72,17 @@ class Eval:
                 for i in range(0,len(terms)):
                     noun_phrase = noun_phrase + " " + terms[i]
                 polarity_score = Pattern.sentiment(noun_phrase.strip())
-                if polarity_score[0] <=(-0.1):
+                if polarity_score[0] <=(-0.2) and polarity_score[1]>=0.5:
                     negative_score += Pattern.sentiment(noun_phrase)[0]
                     total_count += 1
-                    #print "Negatives:", noun_phrase, ": " ,negative_score
+                    print "Negatives:", noun_phrase, ": " ,negative_score
                     detectedNegative = True;
 
         if detectedPositive or detectedNegative:
             self.correlation_vector1.append((positive_score+negative_score)/2)
             self.correlation_vector2.append(star)
             dictionary_accuracy[review_id] = ((positive_score+negative_score)/2,star)
+
         #print ("*") * 50
 
     def evaluation(self,dictionary_accuracy):
@@ -142,15 +145,26 @@ class Eval:
 
         return predicted,labeled
 
+    def generateCorrelationGraph(self,outputCSVFile):
+        csvfile = codecs.open(outputCSVFile.strip(".json")+"Plot.csv", 'w', 'utf-8')
+        fieldnames = ["Stars", "Polarity Values"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
 
+        for i in range(len(self.correlation_vector1)):
+            csv_row = {}
+            csv_row["Stars"] = self.correlation_vector2[i]
+            csv_row["Polarity Values"] = self.correlation_vector1[i]
+            writer.writerow(csv_row)
 
-
+outputFile = "Phoenix_careCentre_reviews.csv"
+fileName = "Pittsburgh_hospital_reviews.json"
 
 e = Eval()
 e.initializeCorrelationVectors()
-fileName = "Pittsburgh_careCentre_reviews.json"
 resultDictionary = e.parseReviews(fileName)
 e.evaluation(resultDictionary)
 predicted_set, labeled_set = e.pre_process(resultDictionary)
 print("Actual Accuracy: ",accuracy(labeled_set,predicted_set))
 print(ConfusionMatrix(labeled_set,predicted_set))
+#e.generateCorrelationGraph(fileName)
