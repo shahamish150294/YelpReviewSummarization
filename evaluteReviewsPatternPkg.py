@@ -67,10 +67,10 @@ class Eval:
                     noun_phrase = noun_phrase +" " + terms[i]
                 polarity_score = Pattern.sentiment(noun_phrase.strip())
                 if polarity_score[0] >=(0.2) and polarity_score[1]>=0.5:
-                    results_positive_phrases.append(noun_phrase+"||")
+                    results_positive_phrases.append(noun_phrase)
                     positive_score += Pattern.sentiment(noun_phrase)[0]
                     total_count += 1
-                    print "Positives:", noun_phrase, ": " ,positive_score
+                    #print "Positives:", noun_phrase, ": " ,positive_score
 
                     detectedPositive = True
         chunk_reviews = negativeParser.parse(POStagged_reviews)
@@ -85,35 +85,36 @@ class Eval:
                     noun_phrase = noun_phrase + " " + terms[i]
                 polarity_score = Pattern.sentiment(noun_phrase.strip())
                 if polarity_score[0] <=(-0.2) and polarity_score[1]>=0.5:
-                    results_negative_phrases.append(noun_phrase+"||")
+                    results_negative_phrases.append(noun_phrase)
                     negative_score += Pattern.sentiment(noun_phrase)[0]
 
                     total_count += 1
-                    print "Negatives:", noun_phrase, ": " ,negative_score
+                   # print "Negatives:", noun_phrase, ": " ,negative_score
                     detectedNegative = True;
 
         if detectedPositive or detectedNegative:
 
 
             sentence_score = (positive_score+negative_score)/2
+            self.correlation_vector1.append(sentence_score)
+            self.correlation_vector2.append(star)
+            dictionary_accuracy[review_id] = ((positive_score+negative_score)/2,star)
             if sentence_score > 0:
                 results_csv_row["Positive_Phrases"] = results_positive_phrases
                 results_csv_row["Negative_Phrases"] = []
                 results_csv_row["Positive_Polarity"] = sentence_score
                 results_csv_row["Negative_Polarity"] = "NA"
-
+                resultsWriter.writerow(results_csv_row)
+                return (results_positive_phrases, "Positive")
             else:
                 results_csv_row["Positive_Phrases"] = []
                 results_csv_row["Negative_Phrases"] = results_negative_phrases
                 results_csv_row["Negative_Polarity"] = sentence_score
                 results_csv_row["Positive_Polarity"] = "NA"
+                resultsWriter.writerow(results_csv_row)
+                return (results_negative_phrases, "Negative")
 
-            resultsWriter.writerow(results_csv_row)
-            self.correlation_vector1.append(sentence_score)
-            self.correlation_vector2.append(star)
-            dictionary_accuracy[review_id] = ((positive_score+negative_score)/2,star)
 
-        #print ("*") * 50
 
     def evaluation(self,dictionary_accuracy):
         labelCount = 0.0
@@ -143,9 +144,16 @@ class Eval:
     #Get reviews
     def parseReviews(self,fileName):
         dictionary_accuracy = defaultdict(float)
-        csvfile = codecs.open(fileName.strip(".json")+"_Results.csv", 'w', 'utf-8')
+        csvfile1 = codecs.open(fileName.strip(".json")+"_Results.csv", 'w', 'utf-8')
+        csvfile2 = codecs.open(fileName.strip(".json")+"_Positive_Phrases.csv", 'w', 'utf-8')
+        csvfile3 = codecs.open(fileName.strip(".json")+"_Negative_Phrases.csv", 'w', 'utf-8')
+        positivePhraseCsvFields = ["Positive_Phrases","Positive_Phrase_Tag"]
+        negativePhraseCsvFields =  ["Negative_Phrases","Negative_Phrase_Tag"]
+        positivePhraseWriter = csv.DictWriter(csvfile2, fieldnames=positivePhraseCsvFields)
+        negativePhraseWriter = csv.DictWriter(csvfile3, fieldnames=negativePhraseCsvFields)
         fieldnames = ["Reviews", "Stars", "Positive_Phrases", "Positive_Polarity", "Negative_Phrases", "Negative_Polarity"]
-        resultsWriter = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        resultsWriter = csv.DictWriter(csvfile1, fieldnames=fieldnames)
 
         charlotteHospitalReviews = []
         with open(fileName) as f:
@@ -159,7 +167,28 @@ class Eval:
         for each_review in charlotteHospitalReviews:
 
             id+=1
-            self.getChunks(each_review['text'],each_review['stars'], self.positiveChunkPOS_tag, self.negativeChunkPOS_tag,id,dictionary_accuracy, resultsWriter )
+            phrase_tuple = self.getChunks(each_review['text'],each_review['stars'], self.positiveChunkPOS_tag, self.negativeChunkPOS_tag,id,dictionary_accuracy, resultsWriter )
+
+            if phrase_tuple:
+
+                if (phrase_tuple[1] == "Positive"):
+
+                    for each_positive_phrase in phrase_tuple[0]:
+                        each_row_in_csv = {}
+                        each_row_in_csv["Positive_Phrases"] = each_positive_phrase
+                        each_row_in_csv["Positive_Phrase_Tag"] = ""
+                        positivePhraseWriter.writerow(each_row_in_csv)
+
+                elif (phrase_tuple[1] == "Negative"):
+
+                    for each_negative_phrase in phrase_tuple[0]:
+                        each_row_in_csv = {}
+                        each_row_in_csv["Negative_Phrases"] = each_negative_phrase
+                        each_row_in_csv["Negative_Phrase_Tag"] = ""
+                        negativePhraseWriter.writerow(each_row_in_csv)
+
+                else:
+                    print "**************Error*************"
         print "Correlation constant: ", numpy.corrcoef(self.correlation_vector1,self.correlation_vector2)
         return dictionary_accuracy
 
@@ -201,4 +230,4 @@ e.evaluation(resultDictionary)
 predicted_set, labeled_set = e.pre_process(resultDictionary)
 print("Actual Accuracy: ",accuracy(labeled_set,predicted_set))
 print(ConfusionMatrix(labeled_set,predicted_set))
-#e.generateCorrelationGraph(fileName)
+e.generateCorrelationGraph(fileName)
