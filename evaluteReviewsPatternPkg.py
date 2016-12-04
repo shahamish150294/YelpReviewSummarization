@@ -8,8 +8,11 @@ import pattern.en as Pattern
 from collections import defaultdict
 from nltk.metrics import *
 import numpy
+import sys
 
-
+#To resolve the ascii encoding error
+reload(sys)
+sys.setdefaultencoding('utf-8')
 def decode_json(line):
     try:
         return json.loads(line)
@@ -31,10 +34,18 @@ class Eval:
 
 
     # Take all the reviews and get the all the chunks as per a regex
-    def getChunks(self,review_text, star, positive_regex, negative_regex, review_id, dictionary_accuracy):
+    def getChunks(self,review_text, star, positive_regex, negative_regex, review_id, dictionary_accuracy, resultsWriter):
         #try:
         count_pos = 0;count_neg = 0;total_count = 0
+        #####
+        # Following variables to add data to result csv
+        results_csv_row = {}
+        results_positive_phrases = []
+        results_negative_phrases = []
+        results_csv_row["Reviews"] = review_text
+        results_csv_row["Stars"] = star
 
+        #####
         review_phrases = []
         detectedPositive = False;
         detectedNegative = False;
@@ -56,6 +67,7 @@ class Eval:
                     noun_phrase = noun_phrase +" " + terms[i]
                 polarity_score = Pattern.sentiment(noun_phrase.strip())
                 if polarity_score[0] >=(0.2) and polarity_score[1]>=0.5:
+                    results_positive_phrases.append(noun_phrase+"||")
                     positive_score += Pattern.sentiment(noun_phrase)[0]
                     total_count += 1
                     print "Positives:", noun_phrase, ": " ,positive_score
@@ -73,13 +85,31 @@ class Eval:
                     noun_phrase = noun_phrase + " " + terms[i]
                 polarity_score = Pattern.sentiment(noun_phrase.strip())
                 if polarity_score[0] <=(-0.2) and polarity_score[1]>=0.5:
+                    results_negative_phrases.append(noun_phrase+"||")
                     negative_score += Pattern.sentiment(noun_phrase)[0]
+
                     total_count += 1
                     print "Negatives:", noun_phrase, ": " ,negative_score
                     detectedNegative = True;
 
         if detectedPositive or detectedNegative:
-            self.correlation_vector1.append((positive_score+negative_score)/2)
+
+
+            sentence_score = (positive_score+negative_score)/2
+            if sentence_score > 0:
+                results_csv_row["Positive_Phrases"] = results_positive_phrases
+                results_csv_row["Negative_Phrases"] = []
+                results_csv_row["Positive_Polarity"] = sentence_score
+                results_csv_row["Negative_Polarity"] = "NA"
+
+            else:
+                results_csv_row["Positive_Phrases"] = []
+                results_csv_row["Negative_Phrases"] = results_negative_phrases
+                results_csv_row["Negative_Polarity"] = sentence_score
+                results_csv_row["Positive_Polarity"] = "NA"
+
+            resultsWriter.writerow(results_csv_row)
+            self.correlation_vector1.append(sentence_score)
             self.correlation_vector2.append(star)
             dictionary_accuracy[review_id] = ((positive_score+negative_score)/2,star)
 
@@ -113,6 +143,10 @@ class Eval:
     #Get reviews
     def parseReviews(self,fileName):
         dictionary_accuracy = defaultdict(float)
+        csvfile = codecs.open(fileName.strip(".json")+"_Results.csv", 'w', 'utf-8')
+        fieldnames = ["Reviews", "Stars", "Positive_Phrases", "Positive_Polarity", "Negative_Phrases", "Negative_Polarity"]
+        resultsWriter = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
         charlotteHospitalReviews = []
         with open(fileName) as f:
             for line in f:
@@ -125,7 +159,7 @@ class Eval:
         for each_review in charlotteHospitalReviews:
 
             id+=1
-            self.getChunks(each_review['text'],each_review['stars'], self.positiveChunkPOS_tag, self.negativeChunkPOS_tag,id,dictionary_accuracy )
+            self.getChunks(each_review['text'],each_review['stars'], self.positiveChunkPOS_tag, self.negativeChunkPOS_tag,id,dictionary_accuracy, resultsWriter )
         print "Correlation constant: ", numpy.corrcoef(self.correlation_vector1,self.correlation_vector2)
         return dictionary_accuracy
 
@@ -146,7 +180,7 @@ class Eval:
         return predicted,labeled
 
     def generateCorrelationGraph(self,outputCSVFile):
-        csvfile = codecs.open(outputCSVFile.strip(".json")+"Plot.csv", 'w', 'utf-8')
+        csvfile = codecs.open(outputCSVFile.strip(".json")+"_Plot.csv", 'w', 'utf-8')
         fieldnames = ["Stars", "Polarity Values"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -158,7 +192,7 @@ class Eval:
             writer.writerow(csv_row)
 
 outputFile = "Phoenix_careCentre_reviews.csv"
-fileName = "Pittsburgh_hospital_reviews.json"
+fileName = "Phoenix_hospital_reviews.json"
 
 e = Eval()
 e.initializeCorrelationVectors()
